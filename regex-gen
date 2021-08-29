@@ -5,38 +5,40 @@ with open(venv_file) as f:
     run = '\n'.join(f.readlines())
     exec(run, dict(__file__=venv_file))
 
-from plyplus import Grammar, STransformer
+from lark import Lark, Transformer
 
-regex_grammar = Grammar("""
-@start  : re ;
+regex_grammar = r"""
+?start  : re
 
-re    : simple_re | union ;
-union    : re '\|' simple_re ;
-simple_re  : basic_re | concat ;
-concat    : simple_re basic_re ;
-basic_re  : elementary_re count_specifier ? ;
+?re    : simple_re | union
+union    : re "|" simple_re
+?simple_re  : basic_re | concat
+concat    : simple_re basic_re
+basic_re  : elementary_re count_specifier ?
 
-count_specifier : '\*' | '\+' | '\?' | match_count ;
+!count_specifier : "*" | "+" | "?" | match_count
+match_count  : "{" ( number "," ) ? number "}"
 
-elementary_re  : group | set | any | char ;
-group    : '\(' re '\)' ;
-match_count  : '\{' ( number ',' ) ? number '\}' ;
-digit    : '[0123456789]' ;
-number    : digit+ ;
-any    : '\.' ;
-char    : non_meta | '~' meta ;
+elementary_re  : group | set | any | char
+?group    : "(" re ")"
+number  : DIGIT +
+any     : "."
+char    : non_meta | "\\" meta
 
-non_meta  : '[ _a-zA-Z]' | digit ;
-meta    : '[[]\(\)|$\.\+\*\?]' ;
+!non_meta  : "a".."z" | "A".."Z" | DIGIT | "_"
+!meta    : "{" | "}" | "[" | "]" | "(" | ")" | "|" | "$" | "." | "+" | "*" | "?"
 
-set    : pset | nset ;
-pset    : '\[' set_item + '\]' ;
-nset    : '\[\^' set_item + '\]' ;
-set_item  : range | char ;
-range    : char '-' char ;
+?set      : pset | nset
+pset    : "[" set_item + "]"
+nset    : "[^" set_item + "]"
+?set_item  : range | char
+range    : char "-" char
 
-WS: '[\t\n]+' (%ignore) (%newline);
-""")
+%import common.DIGIT
+%import common.WS
+
+%ignore WS
+"""
 
 def debug(*args):
   #print(*args)
@@ -137,7 +139,6 @@ class IteratorProduct():
     self.items = None
     self.done = False
 
-
   def __current__(self):
     if self.done:
       raise StopIteration()
@@ -155,7 +156,6 @@ class IteratorProduct():
 
       for i in self.i:
         self.items.append( i.__next__() )
-
     else:
       # update in place, from last to first
       # only go to the previous item once it's rolled over
@@ -322,72 +322,96 @@ class IteratorUnion():
     self.idx = 0
 
 
-class RegExprParser(STransformer):
+class RegExprParser(Transformer):
 
-  __default__ = lambda self, exp : exp.tail[0]
+  #__default__ = lambda self, exp : exp[0]
 
   def __init__(self, star_plus_count=4):
     # number of times to expand a '+' or a '*'
     self.count_expand = star_plus_count
 
   def union(self, exp):
-    return IteratorUnion( exp.tail )
+    debug("union", exp)
+    return IteratorUnion(exp)
 
   def basic_re(self, exp):
-    #print(exp)
-    if len(exp.tail) == 1:
-      return exp.tail[0]
+    debug("basic_re", exp)
+    if len(exp) == 1:
+      return exp[0]
     else:
-      return exp.tail[1]( exp.tail[0] )
+      return exp[1]( exp[0] )
 
   def count_specifier(self, exp):
-    if exp.tail[0] == '*':
-      return match_range(0,self.count_expand)
-    elif exp.tail[0] == '+':
-      return match_range(1,self.count_expand)
-    elif exp.tail[0] == '?':
-      return match_range(0,1)
+    debug("count_specifier", exp)
+    exp = exp[0]
+    if exp == '*':
+      return match_range(0, self.count_expand)
+    elif exp == '+':
+      return match_range(1, self.count_expand)
+    elif exp == '?':
+      return match_range(0, 1)
+    else:
+      # was a match_count
+      return exp
 
-    return exp.tail[0]
+  def number(self, exp):
+    # Doesn't handle not base 10 numbers
+    s = ''.join(exp)
+    return int(s)
 
   def match_count(self, exp):
-    count = int(exp.tail[0])
-    if len(exp.tail) == 1:
+    debug("match_count", exp)
+    count = int(exp[0])
+    if len(exp) == 1:
       return match_range( count, count )
     else:
-      return match_range( count, int(exp.tail[1]) )
+      return match_range( count, int(exp[1]) )
 
   def concat(self, exp):
-    #print(exp)
-    return IteratorProduct( iters=list(exp.tail) )
+    debug("concat", exp)
+    return IteratorProduct(iters=exp)
 
   def elementary_re(self, exp):
-    #print(exp)
-    if type( exp.tail[0] ) is not ResetableIterator:
-      return ResetableIterator( exp.tail[0] )
-    return exp.tail[0]
+    debug("elementary_re", exp)
+    exp = exp[0]
+    if isinstance(exp, str):
+      return ResetableIterator([exp])
+    elif type(exp) is not ResetableIterator:
+      return ResetableIterator(exp)
+    return exp
+
+  def meta(self, exp):
+    debug("meta", exp)
+    return exp[0]
+
+  def non_meta(self, exp):
+    debug("non_meta", exp)
+    return exp[0]
 
   def char(self, exp):
-    return [ exp.tail[0] ]
-
-  def set(self, exp):
-    return list( exp.tail[0] )
+    debug("char", exp)
+    # Convert to string
+    return str(exp[0])
 
   def pset(self, exp):
-    return itertools.chain( *exp.tail )
+    debug("pset", exp)
+    debug("pset", [str(e) for e in exp])
+    return ResetableIterator(list(itertools.chain( *exp )))
 
   def nset(self, exp):
+    debug("nset", exp)
     return remove_chars( self.pset( exp ) )
 
   def range(self, exp):
-    return str_range(exp.tail[0][0], exp.tail[1][0])
+    debug("range", exp)
+    start, stop = exp
+    return str_range(start, stop)
 
 
 def parse(expr, star_plus_count = 4):
   p = RegExprParser(star_plus_count=star_plus_count)
-  ast = regex_grammar.parse( expr )
-
-  return p.transform( ast )
+  l = Lark(regex_grammar, parser='lalr', transformer=p)
+  return l.parse(expr)
 
 
 import argparse
@@ -397,7 +421,7 @@ def arg_parser():
   parser = argparse.ArgumentParser(description='A tool to list every string that matches a regex')
 
   parser.add_argument('regex'
-      , default=["'a(b|c)[de]{2,3}"]
+      , default=["a(b|c)[de]{2,3}[g-j]"]
       , help='regex to list matching strings' )
 
   parser.add_argument('-c', '--expand-count', type=int, default=4
