@@ -1,7 +1,7 @@
 import unittest
 
-from _.language.regex_gen.exploder import CharacterRange, CharacterSet, Repeat, Value, Sum, Product
-from _.language.regex_gen.exploder import FLAG_max_repeat
+from _.language.regex_gen.data import CharacterRange, CharacterSet, Repeat, Value, Sum, Product
+from _.language.regex_gen.data import FLAG_max_repeat
 
 class ValueTests(unittest.TestCase):
   def test_choices(self):
