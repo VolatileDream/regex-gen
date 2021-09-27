@@ -39,10 +39,8 @@ class CharacterTests(unittest.TestCase):
     self.assertEqual(set(regex(CharacterSet("abcdefg"))), set("abcdefg"))
     self.assertEqual(set(regex(CharacterSet("^-abcdefg"))), set("abcdefg^-"))
 
-    self.assertTrue(regex(CharacterSet("abcdefg", negated=True)).startswith("^"))
-
     self.assertFalse(regex(CharacterSet("^-abcdefg")).startswith("^"))
-    self.assertTrue(regex(CharacterSet("^-abcdefg")).endswith("-^"))
+    self.assertTrue(regex(CharacterSet("^-abcdefg")).endswith("^-"))
 
 
 class RepeatTests(unittest.TestCase):

@@ -108,23 +108,19 @@ class CharacterRange(RegexType):
     return "[" + chr(self.start) + "-" + chr(self.end) + "]"
 
 
-# TODO: Remove negation support.
 class CharacterSet(RegexType):
-  # Special meta characters to move to the end
-  __to_remove = list("-^")
+  # Special meta characters to move to the end for a valid regex.
+  __to_remove = list("^-")
 
   # For both value and character sets.
-  def __init__(self, values, negated=False):
+  def __init__(self, values):
     values = set(values)
     bad = [c for c in CharacterSet.__to_remove if c in values]
     values.difference_update(set(bad))
 
     self.values = ''.join(values) + ''.join(bad)
-    self.negated = negated
 
   def choices(self):
-    if self.negated:
-      raise Exception(NotImplemented)
     return len(self.values)
 
   def __getitem__(self, index):
@@ -132,10 +128,7 @@ class CharacterSet(RegexType):
     return self.values[index]
 
   def regex(self):
-    n = ''
-    if self.negated:
-      n = '^'
-    return '[' + n + self.values + ']'
+    return '[' + self.values + ']'
 
 
 class Product(RegexType):
